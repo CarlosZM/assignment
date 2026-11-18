@@ -2,6 +2,7 @@ package com.pci.energy.backend.assignment.repository;
 
 import com.pci.energy.backend.assignment.business.Order;
 import com.pci.energy.backend.assignment.configuration.AssignmentProperties;
+import org.apache.spark.sql.Column;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
@@ -14,13 +15,14 @@ import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import scala.collection.mutable.ArraySeq;
 
 import java.util.Collections;
 import java.util.List;
 
 @Component
 public class OrderIcebergRepository {
-    private static final String TABLE_NAME = "orders";
+    private static final String TABLE_NAME = "ordering";
 
     private static final StructType ORDER_SCHEMA = new StructType(new StructField[]{
             new StructField("order_id", DataTypes.IntegerType, false, Metadata.empty()),
@@ -58,7 +60,7 @@ public class OrderIcebergRepository {
             Dataset<Row> df = spark.createDataFrame(Collections.emptyList(), ORDER_SCHEMA);
 
             try {
-                df.writeTo(fullTableName).using("iceberg").create();
+                df.writeTo(fullTableName).using("iceberg").partitionedBy(new Column("order_date"), new ArraySeq<>(0)).create();
             } catch (TableAlreadyExistsException e) {
                 e.printStackTrace();
             }
