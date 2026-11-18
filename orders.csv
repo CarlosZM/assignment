@@ -1,0 +1,13 @@
+order_id,customer_id,product,category,quantity,unit_price,order_date,country
+1001,C001,Laptop Stand,Accessories,2,29.99,2026-01-05,CO
+1002,C002,Mechanical Keyboard,Peripherals,1,89.50,2026-01-05,MX
+1003,C003,USB-C Hub,Accessories,3,45.00,2026-01-06,PE
+1004,C001,Monitor 27in,Displays,1,319.99,2026-01-07,CO
+1005,C004,Webcam HD,Peripherals,2,59.90,2026-01-07,MX
+1006,C005,Laptop Stand,Accessories,1,29.99,2026-01-08,CL
+1007,C002,Wireless Mouse,Peripherals,4,24.50,2026-01-09,MX
+1008,C006,Monitor 27in,Displays,2,319.99,not-a-date,CO
+1009,C007,USB-C Hub,Accessories,-1,45.00,2026-01-10,PE
+,C008,Webcam HD,Peripherals,1,59.90,2026-01-10,CL
+1003,C003,USB-C Hub,Accessories,3,45.00,2026-01-06,PE
+1012,C009,Mechanical Keyboard,Peripherals,1,abc,2026-01-11,MX

@@ -1,0 +1,165 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8085:8085"
+    networks:
+      - lakehouse-net
+    depends_on:
+      spark-master:
+        restart: true
+        condition: service_started
+  namenode:
+    image: apache/hadoop:3.4.1
+    container_name: namenode
+    hostname: namenode
+    user: root
+    ports:
+      - "9870:9870" # HDFS Web UI
+      - "9000:9000" # HDFS RPC / IPC
+    environment:
+      - CORE-SITE.XML_fs.defaultFS=hdfs://namenode:9000
+      - HDFS-SITE.XML_dfs.replication=1
+      - HDFS-SITE.XML_dfs.permissions.enabled=false
+      - HDFS-SITE.XML_dfs.namenode.datanode.registration.ip-hostname-check=false
+      - HDFS-SITE.XML_dfs.client.use.datanode.hostname=true
+      - HDFS-SITE.XML_dfs.datanode.use.datanode.hostname=true
+    volumes:
+      - namenodev2-data:/tmp/hadoop-root/dfs/name
+    command:
+      - bash
+      - -c
+      - |
+        if [ ! -d /tmp/hadoop-root/dfs/name/current ]; then
+          hdfs namenode -format -force
+        fi
+        hdfs namenode
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9870"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - lakehouse-net
+
+  datanode:
+    image: apache/hadoop:3.4.1
+    container_name: datanode
+    hostname: datanode
+    user: root
+    depends_on:
+      namenode:
+        condition: service_healthy
+    ports:
+      - "9864:9864" # DataNode Web UI
+      - "9866:9866" # DataNode Transfer
+      - "50010:50010"
+    environment:
+      - CORE-SITE.XML_fs.defaultFS=hdfs://namenode:9000
+      - HDFS-SITE.XML_dfs.replication=1
+      - HDFS-SITE.XML_dfs.permissions.enabled=false
+      - HDFS-SITE.XML_dfs.namenode.datanode.registration.ip-hostname-check=false
+      - HDFS-SITE.XML_dfs.client.use.datanode.hostname=true
+      - HDFS-SITE.XML_dfs.datanode.use.datanode.hostname=true
+      - HDFS-SITE.XML_dfs.datanode.hostname=datanode
+    volumes:
+      - datanodev2-data:/tmp/hadoop-root/dfs/data
+    command: ["hdfs", "datanode"]
+    networks:
+      - lakehouse-net
+
+  hdfs-init:
+    image: apache/hadoop:3.4.1
+    container_name: hdfs-init
+    user: root
+    depends_on:
+      namenode:
+        condition: service_healthy
+    environment:
+      - CORE-SITE.XML_fs.defaultFS=hdfs://namenode:9000
+    command:
+      - bash
+      - -c
+      - |
+        hdfs dfsadmin -safemode wait
+        hdfs dfs -mkdir -p /warehouse
+        hdfs dfs -chmod -R 777 /warehouse
+    networks:
+      - lakehouse-net
+
+  spark-master:
+    image: apache/spark:3.5.4-java17-python3
+    container_name: spark-master
+    hostname: spark-master
+    user: root
+    depends_on:
+      hdfs-init:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080" # Spark Master Web UI
+      - "7077:7077" # Spark Master RPC
+    volumes:
+      - ivy-cache:/root/.ivy2
+    command:
+      - bash
+      - -c
+      - |
+        wget -P "/opt/spark/jars/" https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.12.0/iceberg-spark-runtime-3.5_2.12-1.12.0.jar
+        mkdir -p /opt/spark/conf /root/.ivy2
+        printf "%s\n" \
+          "spark.jars.packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.12.0" \
+          "spark.sql.extensions org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions" \
+          "spark.sql.defaultCatalog iceberg" \
+          "spark.sql.catalog.iceberg org.apache.iceberg.spark.SparkCatalog" \
+          "spark.sql.catalog.iceberg.type hadoop" \
+          "spark.sql.catalog.iceberg.warehouse hdfs://namenode:9000/warehouse" \
+          "spark.hadoop.fs.defaultFS hdfs://namenode:9000" \
+          > /opt/spark/conf/spark-defaults.conf
+        /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --host spark-master --port 7077 --webui-port 8080
+    networks:
+      - lakehouse-net
+
+  spark-worker:
+    image: apache/spark:3.5.4-java17-python3
+    container_name: spark-worker
+    hostname: spark-worker
+    user: root
+    depends_on:
+      spark-master:
+        restart: true
+        condition: service_started
+    ports:
+      - "8081:8081" # Spark Worker Web UI
+    environment:
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2g
+    volumes:
+      - ivy-cache:/root/.ivy2
+    command:
+      - bash
+      - -c
+      - |
+        wget -P "/opt/spark/jars/" https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.12.0/iceberg-spark-runtime-3.5_2.12-1.12.0.jar
+        mkdir -p /opt/spark/conf /root/.ivy2
+        printf "%s\n" \
+          "spark.jars.packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.12.0" \
+          "spark.sql.extensions org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions" \
+          "spark.sql.defaultCatalog iceberg" \
+          "spark.sql.catalog.iceberg org.apache.iceberg.spark.SparkCatalog" \
+          "spark.sql.catalog.iceberg.type hadoop" \
+          "spark.sql.catalog.iceberg.warehouse hdfs://namenode:9000/warehouse" \
+          "spark.hadoop.fs.defaultFS hdfs://namenode:9000" \
+          > /opt/spark/conf/spark-defaults.conf
+        /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077 --webui-port 8081
+    networks:
+      - lakehouse-net
+volumes:
+  namenodev2-data:
+  datanodev2-data:
+  ivy-cache:
+
+networks:
+  lakehouse-net:
+    driver: bridge
