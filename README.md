@@ -1,6 +1,6 @@
 # Assignment backend quick start
 
-This guide uses the Compose services you shared. It assumes the backend is reachable at `http://localhost:8085` and proposes these routes until they are confirmed in the controller:
+It assumes the backend is reachable at `http://localhost:8085` and proposes these routes until they are confirmed in the controller:
 
 - `POST /orders` — create one order from JSON
 - `GET /orders` — list orders
